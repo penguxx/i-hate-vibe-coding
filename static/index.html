@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Gemini Chat</title>
+  <link rel="stylesheet" href="/static/style.css" />
+  <!-- Marked.js für sauberes Markdown-Rendering der Gemini-Antworten -->
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+</head>
+<body>
+  <div class="chat-container">
+    <!-- Header -->
+    <header class="chat-header">
+      <div class="header-logo">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M12 2L14.4 9.6L22 12L14.4 14.4L12 22L9.6 14.4L2 12L9.6 9.6L12 2Z" fill="url(#sparkle-gradient)" />
+          <defs>
+            <linearGradient id="sparkle-gradient" x1="2" y1="2" x2="22" y2="22" gradientUnits="userSpaceOnUse">
+              <stop stop-color="#4E82EE" />
+              <stop offset="1" stop-color="#9A59ED" />
+            </linearGradient>
+          </defs>
+        </svg>
+        <h1>Gemini AI Assistant</h1>
+      </div>
+      <div class="header-status">
+        <span class="status-indicator"></span>
+        <span class="status-text">Lokal verbunden (127.0.0.1:8000)</span>
+      </div>
+    </header>
+
+    <!-- Chat Messages Window -->
+    <main class="chat-history" id="chatHistory">
+      <div class="message system-welcome">
+        <div class="bubble bot">
+          <p>👋 Hallo! Stelle mir gerne eine beliebige Frage. Sobald du deinen API-Key in der <code>.env</code>-Datei eingetragen hast, kann ich direkt für dich loslegen.</p>
+        </div>
+      </div>
+    </main>
+
+    <!-- Input Form -->
+    <footer class="chat-input-area">
+      <form id="chatForm" class="input-form">
+        <textarea
+          id="userInput"
+          placeholder="Stelle eine Frage an Gemini... (Enter zum Senden, Shift+Enter für Zeilenumbruch)"
+          rows="1"
+          required
+        ></textarea>
+        <button type="submit" id="sendBtn" title="Frage senden">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="22" y1="2" x2="11" y2="13"></line>
+            <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+          </svg>
+          <span>Senden</span>
+        </button>
+      </form>
+    </footer>
+  </div>
+
+  <script>
+    const chatHistory = document.getElementById("chatHistory");
+    const chatForm = document.getElementById("chatForm");
+    const userInput = document.getElementById("userInput");
+    const sendBtn = document.getElementById("sendBtn");
+
+    // Auto-Resize Textarea
+    userInput.addEventListener("input", function () {
+      this.style.height = "auto";
+      this.style.height = Math.min(this.scrollHeight, 150) + "px";
+    });
+
+    // Enter zum Senden, Shift+Enter für neue Zeile
+    userInput.addEventListener("keydown", function (e) {
+      if (e.key === "Enter" && !e.shiftKey) {
+        e.preventDefault();
+        chatForm.dispatchEvent(new Event("submit"));
+      }
+    });
+
+    function appendMessage(text, sender, isMarkdown = false) {
+      const msgDiv = document.createElement("div");
+      msgDiv.className = `message ${sender}-message`;
+
+      const bubbleDiv = document.createElement("div");
+      bubbleDiv.className = `bubble ${sender}`;
+
+      if (isMarkdown && typeof marked !== "undefined") {
+        bubbleDiv.innerHTML = marked.parse(text);
+      } else {
+        bubbleDiv.textContent = text;
+      }
+
+      msgDiv.appendChild(bubbleDiv);
+      chatHistory.appendChild(msgDiv);
+      chatHistory.scrollTop = chatHistory.scrollHeight;
+
+      return msgDiv;
+    }
+
+    function appendLoadingIndicator() {
+      const loadingDiv = document.createElement("div");
+      loadingDiv.className = "message bot-message loading-message";
+      loadingDiv.id = "loadingIndicator";
+
+      const bubble = document.createElement("div");
+      bubble.className = "bubble bot loading-dots";
+      bubble.innerHTML = "<span></span><span></span><span></span>";
+
+      loadingDiv.appendChild(bubble);
+      chatHistory.appendChild(loadingDiv);
+      chatHistory.scrollTop = chatHistory.scrollHeight;
+      return loadingDiv;
+    }
+
+    function removeLoadingIndicator() {
+      const loader = document.getElementById("loadingIndicator");
+      if (loader) {
+        loader.remove();
+      }
+    }
+
+    chatForm.addEventListener("submit", async function (e) {
+      e.preventDefault();
+      const prompt = userInput.value.trim();
+      if (!prompt) return;
+
+      // 1. User-Nachricht anzeigen
+      appendMessage(prompt, "user");
+      userInput.value = "";
+      userInput.style.height = "auto";
+      userInput.disabled = true;
+      sendBtn.disabled = true;
+
+      // 2. Lade-Animation anzeigen
+      appendLoadingIndicator();
+
+      try {
+        // 3. HTTP POST Request an das eigene Python-Backend
+        const response = await fetch("/api/chat", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ prompt: prompt }),
+        });
+
+        const data = await response.json();
+        removeLoadingIndicator();
+
+        if (!response.ok) {
+          // Fehler vom Backend sauber anzeigen
+          const errorMsg = data.detail || "Ein unbekannter Fehler ist aufgetreten.";
+          appendMessage(`⚠️ **Fehler:** ${errorMsg}`, "error", true);
+        } else {
+          // Erfolgreiche Antwort von Gemini anzeigen
+          appendMessage(data.reply, "bot", true);
+        }
+      } catch (err) {
+        removeLoadingIndicator();
+        appendMessage(
+          `🔌 **Verbindungsfehler:** Konnte das Python-Backend nicht erreichen (${err.message}). Läuft der Server?`,
+          "error",
+          true
+        );
+      } finally {
+        userInput.disabled = false;
+        sendBtn.disabled = false;
+        userInput.focus();
+      }
+    });
+  </script>
+</body>
+</html>

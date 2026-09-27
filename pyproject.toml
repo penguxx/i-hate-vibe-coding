@@ -1,0 +1,21 @@
+[project]
+name = "try1"
+version = "0.1.0"
+description = "Add your description here"
+authors = [
+    { name = "Roni" }
+]
+requires-python = ">=3.14"
+dependencies = [
+    "fastapi>=0.141.1",
+    "google-genai>=2.25.0",
+    "python-dotenv>=1.2.3",
+    "uvicorn>=0.54.0",
+]
+
+[project.scripts]
+try1 = "try1:main"
+
+[build-system]
+requires = ["uv_build>=0.12.13,<0.13.0"]
+build-backend = "uv_build"
